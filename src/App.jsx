@@ -63,6 +63,81 @@ function TagPill({ tag, onRemove }) {
   );
 }
 
+function TagEditor({ trade, onSave, onTagClick }) {
+  const [open, setOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [pendingTags, setPendingTags] = useState(trade.tags);
+  const ref = React.useRef(null);
+
+  // Keep local editing state in sync if the trade's tags change from elsewhere
+  // (e.g. another save completing), but only while the popover is closed —
+  // avoids overwriting an in-progress edit out from under the user.
+  useEffect(() => {
+    if (!open) setPendingTags(trade.tags);
+  }, [trade.tags, open]);
+
+  // Close the popover when clicking outside it.
+  useEffect(() => {
+    if (!open) return;
+    const handleClick = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [open]);
+
+  const toggleTag = async (tag) => {
+    const next = pendingTags.includes(tag)
+      ? pendingTags.filter((t) => t !== tag)
+      : [...pendingTags, tag];
+    setPendingTags(next);
+    setSaving(true);
+    try {
+      await onSave(trade.id, { tags: next });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="relative inline-block" ref={ref}>
+      <div className="flex flex-wrap items-center gap-1">
+        {trade.tags.map((tag) => (
+          <button key={tag} onClick={() => onTagClick(tag)}>
+            <TagPill tag={tag} />
+          </button>
+        ))}
+        <button
+          onClick={() => setOpen((o) => !o)}
+          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[11px] font-sans text-[#6B7280] border border-dashed border-[#363B47] hover:text-[#3DD68C] hover:border-[#3DD68C]/40"
+        >
+          {saving ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
+          {trade.tags.length === 0 ? "Tag" : ""}
+        </button>
+      </div>
+
+      {open && (
+        <div className="absolute z-20 top-full left-0 mt-1 bg-[#1C1F26] border border-[#2A2E38] rounded-lg shadow-lg p-2 w-44">
+          <div className="flex flex-col gap-1">
+            {STRATEGY_TAGS.map((tag) => (
+              <button
+                key={tag}
+                onClick={() => toggleTag(tag)}
+                className={`flex items-center justify-between text-left px-2 py-1.5 rounded-md text-[12px] font-sans ${
+                  pendingTags.includes(tag) ? "bg-[#3DD68C]/15 text-[#3DD68C]" : "text-[#A8B0BD] hover:bg-[#2A2E38]"
+                }`}
+              >
+                {tag}
+                {pendingTags.includes(tag) && <Check size={12} />}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function AddTradeForm({ onAdd, onClose }) {
   const [form, setForm] = useState({
     symbol: "EURUSD", direction: "buy", openTime: new Date().toISOString().slice(0, 10),
@@ -569,16 +644,16 @@ export default function TradingJournal() {
                 Filtering by <TagPill tag={activeTagFilter} onRemove={() => setActiveTagFilter(null)} />
               </div>
             )}
-            <div className="bg-[#1C1F26] border border-[#2A2E38] rounded-xl overflow-hidden">
-              <table className="w-full text-sm">
+            <div className="bg-[#1C1F26] border border-[#2A2E38] rounded-xl">
+              <table className="w-full text-sm border-separate" style={{ borderSpacing: 0 }}>
                 <thead>
                   <tr className="border-b border-[#2A2E38] text-[11px] uppercase tracking-wider text-[#6B7280] font-sans">
-                    <th className="text-left px-4 py-2.5 font-medium">Date</th>
+                    <th className="text-left px-4 py-2.5 font-medium rounded-tl-xl">Date</th>
                     <th className="text-left px-4 py-2.5 font-medium">Symbol</th>
                     <th className="text-left px-4 py-2.5 font-medium">Dir</th>
                     <th className="text-left px-4 py-2.5 font-medium w-32">Risk : Reward</th>
                     <th className="text-left px-4 py-2.5 font-medium">Tags</th>
-                    <th className="text-right px-4 py-2.5 font-medium">P/L</th>
+                    <th className="text-right px-4 py-2.5 font-medium rounded-tr-xl">P/L</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -594,13 +669,7 @@ export default function TradingJournal() {
                       </td>
                       <td className="px-4 py-3"><RRBar direction={t.direction} openPrice={t.openPrice} sl={t.sl} tp={t.tp} /></td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {t.tags.map((tag) => (
-                            <button key={tag} onClick={() => setActiveTagFilter(tag)}>
-                              <TagPill tag={tag} />
-                            </button>
-                          ))}
-                        </div>
+                        <TagEditor trade={t} onSave={updateTrade} onTagClick={setActiveTagFilter} />
                       </td>
                       <td className={`px-4 py-3 text-right font-mono font-medium ${t.pl >= 0 ? "text-[#3DD68C]" : "text-[#E5484D]"}`}>{fmtMoney(t.pl)}</td>
                     </tr>
