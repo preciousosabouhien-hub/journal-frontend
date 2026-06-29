@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
-import { Plus, TrendingUp, TrendingDown, Target, X, Tag as TagIcon, Upload, Check, AlertCircle, Loader2 } from "lucide-react";
+import { Plus, TrendingUp, TrendingDown, Target, X, Tag as TagIcon, Upload, Check, AlertCircle, Loader2, Pencil, Trash2 } from "lucide-react";
 import { api } from "./api.js";
 
 const STRATEGY_TAGS = ["Breakout", "Pullback", "Reversal", "News", "Range", "Trend Follow"];
@@ -94,6 +94,10 @@ function TagEditor({ trade, onSave, onTagClick }) {
     setSaving(true);
     try {
       await onSave(trade.id, { tags: next });
+    } catch {
+      // Revert the optimistic local change — the header's actionError
+      // banner already reflects the failure, no need to duplicate it here.
+      setPendingTags(trade.tags);
     } finally {
       setSaving(false);
     }
@@ -138,11 +142,27 @@ function TagEditor({ trade, onSave, onTagClick }) {
   );
 }
 
-function AddTradeForm({ onAdd, onClose }) {
-  const [form, setForm] = useState({
-    symbol: "EURUSD", direction: "buy", openTime: new Date().toISOString().slice(0, 10),
-    openPrice: "", closePrice: "", sl: "", tp: "", lot: "0.1", tags: [], notes: "",
-  });
+function TradeForm({ trade, onSave, onClose }) {
+  const isEditing = Boolean(trade);
+  const [form, setForm] = useState(() =>
+    trade
+      ? {
+          symbol: trade.symbol,
+          direction: trade.direction,
+          openTime: trade.openTime,
+          openPrice: String(trade.openPrice ?? ""),
+          closePrice: String(trade.closePrice ?? ""),
+          sl: String(trade.sl ?? ""),
+          tp: String(trade.tp ?? ""),
+          lot: String(trade.lot ?? "0.1"),
+          tags: trade.tags ?? [],
+          notes: trade.notes ?? "",
+        }
+      : {
+          symbol: "EURUSD", direction: "buy", openTime: new Date().toISOString().slice(0, 10),
+          openPrice: "", closePrice: "", sl: "", tp: "", lot: "0.1", tags: [], notes: "",
+        }
+  );
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
@@ -159,16 +179,29 @@ function AddTradeForm({ onAdd, onClose }) {
       setError("Open price, close price, stop loss, and take profit are all required.");
       return;
     }
-    const pips = calcPips(form.symbol, op, cp, form.direction);
-    const pl = pips * parseFloat(form.lot) * (form.symbol === "XAUUSD" ? 1 : 10);
+
+    // When editing, only recompute P/L if a price-affecting field actually
+    // changed — otherwise we'd silently overwrite a P/L that may include
+    // swap/commission adjustments from a real MT5 import.
+    const priceFieldsChanged =
+      !isEditing ||
+      op !== trade.openPrice ||
+      cp !== trade.closePrice ||
+      parseFloat(form.lot) !== trade.lot ||
+      form.direction !== trade.direction ||
+      form.symbol !== trade.symbol;
+
+    const pl = priceFieldsChanged
+      ? Math.round(calcPips(form.symbol, op, cp, form.direction) * parseFloat(form.lot) * (form.symbol === "XAUUSD" ? 1 : 10))
+      : trade.pl;
 
     setSubmitting(true);
     setError(null);
     try {
-      await onAdd({
+      await onSave({
         symbol: form.symbol, direction: form.direction, openTime: form.openTime,
         openPrice: op, closePrice: cp, sl: parseFloat(form.sl), tp: parseFloat(form.tp),
-        lot: parseFloat(form.lot), pl: Math.round(pl), tags: form.tags, notes: form.notes,
+        lot: parseFloat(form.lot), pl, tags: form.tags, notes: form.notes,
       });
       onClose();
     } catch (err) {
@@ -185,7 +218,7 @@ function AddTradeForm({ onAdd, onClose }) {
     <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" onClick={onClose}>
       <div onClick={(e) => e.stopPropagation()} className="bg-[#1C1F26] border border-[#2A2E38] rounded-xl w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between px-5 py-4 border-b border-[#2A2E38]">
-          <h2 className="font-sans font-semibold text-[#F2F4F7]">Log a trade</h2>
+          <h2 className="font-sans font-semibold text-[#F2F4F7]">{isEditing ? "Edit trade" : "Log a trade"}</h2>
           <button onClick={onClose} className="text-[#6B7280] hover:text-[#F2F4F7]">
             <X size={18} />
           </button>
@@ -264,7 +297,52 @@ function AddTradeForm({ onAdd, onClose }) {
           <button onClick={onClose} disabled={submitting} className="flex-1 py-2 rounded-md text-sm font-sans text-[#A8B0BD] border border-[#2A2E38] hover:border-[#3A3F4A] disabled:opacity-40">Cancel</button>
           <button onClick={handleSubmit} disabled={submitting} className="flex-1 py-2 rounded-md text-sm font-sans font-medium bg-[#3DD68C] text-[#0A0E0C] hover:bg-[#34C17D] disabled:opacity-60 flex items-center justify-center gap-1.5">
             {submitting && <Loader2 size={14} className="animate-spin" />}
-            {submitting ? "Saving…" : "Save trade"}
+            {submitting ? "Saving…" : isEditing ? "Save changes" : "Save trade"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ConfirmDeleteModal({ trade, onConfirm, onClose }) {
+  const [deleting, setDeleting] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleConfirm = async () => {
+    setDeleting(true);
+    setError(null);
+    try {
+      await onConfirm();
+      onClose();
+    } catch (err) {
+      setError(err.message || "Couldn't delete the trade. Is the backend running?");
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="bg-[#1C1F26] border border-[#2A2E38] rounded-xl w-full max-w-sm">
+        <div className="p-5 space-y-3">
+          <h2 className="font-sans font-semibold text-[#F2F4F7]">Delete this trade?</h2>
+          <p className="text-[13px] font-sans text-[#A8B0BD]">
+            <span className="font-mono text-[#F2F4F7]">{trade.symbol}</span> {trade.direction} on {trade.openTime},{" "}
+            <span className={trade.pl >= 0 ? "text-[#3DD68C]" : "text-[#E5484D]"}>{fmtMoney(trade.pl)}</span>.
+            This can't be undone.
+          </p>
+          {error && (
+            <div className="flex items-start gap-2 text-[12px] font-sans rounded-md px-3 py-2 bg-[#E5484D]/10 text-[#E5484D]">
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2 px-5 py-4 border-t border-[#2A2E38]">
+          <button onClick={onClose} disabled={deleting} className="flex-1 py-2 rounded-md text-sm font-sans text-[#A8B0BD] border border-[#2A2E38] hover:border-[#3A3F4A] disabled:opacity-40">Cancel</button>
+          <button onClick={handleConfirm} disabled={deleting} className="flex-1 py-2 rounded-md text-sm font-sans font-medium bg-[#E5484D] text-white hover:bg-[#D43B40] disabled:opacity-60 flex items-center justify-center gap-1.5">
+            {deleting && <Loader2 size={14} className="animate-spin" />}
+            {deleting ? "Deleting…" : "Delete trade"}
           </button>
         </div>
       </div>
@@ -403,6 +481,8 @@ export default function TradingJournal() {
   const [actionError, setActionError] = useState(null);
   const [showForm, setShowForm] = useState(false);
   const [showImport, setShowImport] = useState(false);
+  const [editingTrade, setEditingTrade] = useState(null);
+  const [deletingTrade, setDeletingTrade] = useState(null);
   const [view, setView] = useState("dashboard");
   const [activeTagFilter, setActiveTagFilter] = useState(null);
 
@@ -431,6 +511,7 @@ export default function TradingJournal() {
       setTrades((prev) => [...prev, created]);
     } catch (err) {
       setActionError(err.message);
+      throw err;
     }
   };
 
@@ -448,7 +529,7 @@ export default function TradingJournal() {
     }
   };
 
-  // Update a trade (most commonly: adding strategy tags) via the API.
+  // Update a trade (most commonly: adding strategy tags, or a full edit) via the API.
   const updateTrade = async (id, updates) => {
     setActionError(null);
     try {
@@ -456,6 +537,7 @@ export default function TradingJournal() {
       setTrades((prev) => prev.map((t) => (t.id === id ? updated : t)));
     } catch (err) {
       setActionError(err.message);
+      throw err;
     }
   };
 
@@ -466,6 +548,7 @@ export default function TradingJournal() {
       setTrades((prev) => prev.filter((t) => t.id !== id));
     } catch (err) {
       setActionError(err.message);
+      throw err;
     }
   };
 
@@ -653,12 +736,13 @@ export default function TradingJournal() {
                     <th className="text-left px-4 py-2.5 font-medium">Dir</th>
                     <th className="text-left px-4 py-2.5 font-medium w-32">Risk : Reward</th>
                     <th className="text-left px-4 py-2.5 font-medium">Tags</th>
-                    <th className="text-right px-4 py-2.5 font-medium rounded-tr-xl">P/L</th>
+                    <th className="text-right px-4 py-2.5 font-medium">P/L</th>
+                    <th className="text-right px-4 py-2.5 font-medium rounded-tr-xl w-20"></th>
                   </tr>
                 </thead>
                 <tbody>
                   {[...filteredTrades].reverse().map((t) => (
-                    <tr key={t.id} className="border-b border-[#2A2E38] last:border-b-0 hover:bg-[#22252D]">
+                    <tr key={t.id} className="border-b border-[#2A2E38] last:border-b-0 hover:bg-[#22252D] group">
                       <td className="px-4 py-3 font-mono text-[12px] text-[#A8B0BD]">{t.openTime}</td>
                       <td className="px-4 py-3 font-mono text-[13px]">{t.symbol}</td>
                       <td className="px-4 py-3">
@@ -672,6 +756,24 @@ export default function TradingJournal() {
                         <TagEditor trade={t} onSave={updateTrade} onTagClick={setActiveTagFilter} />
                       </td>
                       <td className={`px-4 py-3 text-right font-mono font-medium ${t.pl >= 0 ? "text-[#3DD68C]" : "text-[#E5484D]"}`}>{fmtMoney(t.pl)}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                          <button
+                            onClick={() => setEditingTrade(t)}
+                            className="p-1.5 rounded-md text-[#6B7280] hover:text-[#F2F4F7] hover:bg-[#2A2E38]"
+                            title="Edit trade"
+                          >
+                            <Pencil size={13} />
+                          </button>
+                          <button
+                            onClick={() => setDeletingTrade(t)}
+                            className="p-1.5 rounded-md text-[#6B7280] hover:text-[#E5484D] hover:bg-[#2A2E38]"
+                            title="Delete trade"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
@@ -715,9 +817,25 @@ export default function TradingJournal() {
       </main>
 
       {showForm && (
-        <AddTradeForm
-          onAdd={addTrade}
+        <TradeForm
+          onSave={addTrade}
           onClose={() => setShowForm(false)}
+        />
+      )}
+
+      {editingTrade && (
+        <TradeForm
+          trade={editingTrade}
+          onSave={(updates) => updateTrade(editingTrade.id, updates)}
+          onClose={() => setEditingTrade(null)}
+        />
+      )}
+
+      {deletingTrade && (
+        <ConfirmDeleteModal
+          trade={deletingTrade}
+          onConfirm={() => deleteTrade(deletingTrade.id)}
+          onClose={() => setDeletingTrade(null)}
         />
       )}
 
