@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine } from "recharts";
-import { Plus, TrendingUp, TrendingDown, Target, X, Tag as TagIcon, Upload, Check, AlertCircle, Loader2, Pencil, Trash2 } from "lucide-react";
-import { api } from "./api.js";
+import { Plus, TrendingUp, TrendingDown, Target, X, Tag as TagIcon, Upload, Check, AlertCircle, Loader2, Pencil, Trash2, LogOut, Lock } from "lucide-react";
+import { api, getToken, setToken, clearToken, AuthError } from "./api.js";
 
 const STRATEGY_TAGS = ["Breakout", "Pullback", "Reversal", "News", "Range", "Trend Follow"];
 
@@ -63,7 +63,7 @@ function TagPill({ tag, onRemove }) {
   );
 }
 
-function TagEditor({ trade, onSave, onTagClick }) {
+function TagEditor({ trade, onSave, onTagClick, editable = true }) {
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [pendingTags, setPendingTags] = useState(trade.tags);
@@ -111,16 +111,18 @@ function TagEditor({ trade, onSave, onTagClick }) {
             <TagPill tag={tag} />
           </button>
         ))}
-        <button
-          onClick={() => setOpen((o) => !o)}
-          className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[11px] font-sans text-[#6B7280] border border-dashed border-[#363B47] hover:text-[#3DD68C] hover:border-[#3DD68C]/40"
-        >
-          {saving ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
-          {trade.tags.length === 0 ? "Tag" : ""}
-        </button>
+        {editable && (
+          <button
+            onClick={() => setOpen((o) => !o)}
+            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-md text-[11px] font-sans text-[#6B7280] border border-dashed border-[#363B47] hover:text-[#3DD68C] hover:border-[#3DD68C]/40"
+          >
+            {saving ? <Loader2 size={10} className="animate-spin" /> : <Plus size={10} />}
+            {trade.tags.length === 0 ? "Tag" : ""}
+          </button>
+        )}
       </div>
 
-      {open && (
+      {editable && open && (
         <div className="absolute z-20 top-full left-0 mt-1 bg-[#1C1F26] border border-[#2A2E38] rounded-lg shadow-lg p-2 w-44">
           <div className="flex flex-col gap-1">
             {STRATEGY_TAGS.map((tag) => (
@@ -350,6 +352,72 @@ function ConfirmDeleteModal({ trade, onConfirm, onClose }) {
   );
 }
 
+function LoginModal({ onLogin, onClose }) {
+  const [password, setPassword] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (!password) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await onLogin(password);
+      onClose();
+    } catch (err) {
+      setError(err.message || "Couldn't log in. Is the backend running?");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <form
+        onSubmit={handleSubmit}
+        onClick={(e) => e.stopPropagation()}
+        className="bg-[#1C1F26] border border-[#2A2E38] rounded-xl w-full max-w-sm"
+      >
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[#2A2E38]">
+          <h2 className="font-sans font-semibold text-[#F2F4F7] flex items-center gap-2">
+            <Lock size={15} /> Log in to edit
+          </h2>
+          <button type="button" onClick={onClose} className="text-[#6B7280] hover:text-[#F2F4F7]">
+            <X size={18} />
+          </button>
+        </div>
+        <div className="p-5 space-y-3">
+          <p className="text-[13px] font-sans text-[#A8B0BD]">
+            Viewing the journal is open to anyone with the link — adding, editing, deleting, or importing trades needs your password.
+          </p>
+          <input
+            type="password"
+            autoFocus
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Password"
+            className="w-full bg-[#13151A] border border-[#2A2E38] rounded-md px-3 py-2 text-sm font-mono text-[#F2F4F7] focus:outline-none focus:ring-1 focus:ring-[#3DD68C] focus:border-[#3DD68C]"
+          />
+          {error && (
+            <div className="flex items-start gap-2 text-[12px] font-sans rounded-md px-3 py-2 bg-[#E5484D]/10 text-[#E5484D]">
+              <AlertCircle size={14} className="mt-0.5 shrink-0" />
+              <span>{error}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex gap-2 px-5 py-4 border-t border-[#2A2E38]">
+          <button type="button" onClick={onClose} disabled={submitting} className="flex-1 py-2 rounded-md text-sm font-sans text-[#A8B0BD] border border-[#2A2E38] hover:border-[#3A3F4A] disabled:opacity-40">Cancel</button>
+          <button type="submit" disabled={submitting || !password} className="flex-1 py-2 rounded-md text-sm font-sans font-medium bg-[#3DD68C] text-[#0A0E0C] hover:bg-[#34C17D] disabled:opacity-60 flex items-center justify-center gap-1.5">
+            {submitting && <Loader2 size={14} className="animate-spin" />}
+            {submitting ? "Logging in…" : "Log in"}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function normalizeImportedTrade(raw) {
   // Accepts trades shaped either like convert_to_journal.py's output
   // (openTime/openPrice/closePrice/sl/tp/lot/pl/tags) or close variants
@@ -485,6 +553,34 @@ export default function TradingJournal() {
   const [deletingTrade, setDeletingTrade] = useState(null);
   const [view, setView] = useState("dashboard");
   const [activeTagFilter, setActiveTagFilter] = useState(null);
+  const [isAuthed, setIsAuthed] = useState(() => Boolean(getToken()));
+  const [showLogin, setShowLogin] = useState(false);
+
+  const login = async (password) => {
+    const { token } = await api.login(password);
+    setToken(token);
+    setIsAuthed(true);
+  };
+
+  const logout = () => {
+    clearToken();
+    setIsAuthed(false);
+  };
+
+  // Wraps a mutating action so that, if the backend says the session is
+  // missing/expired, we drop to logged-out state and prompt for login —
+  // rather than just showing a generic error the user can't act on.
+  const withAuthHandling = (fn) => async (...args) => {
+    try {
+      return await fn(...args);
+    } catch (err) {
+      if (err instanceof AuthError) {
+        setIsAuthed(false);
+        setShowLogin(true);
+      }
+      throw err;
+    }
+  };
 
   // Load trades from the backend API on first mount.
   useEffect(() => {
@@ -504,7 +600,7 @@ export default function TradingJournal() {
   }, []);
 
   // Add a single trade via the API, then reflect it in local state.
-  const addTrade = async (trade) => {
+  const addTrade = withAuthHandling(async (trade) => {
     setActionError(null);
     try {
       const created = await api.createTrade(trade);
@@ -513,10 +609,10 @@ export default function TradingJournal() {
       setActionError(err.message);
       throw err;
     }
-  };
+  });
 
   // Bulk import via the API, then refetch so we have real ids and skip-counts reflected.
-  const importTrades = async (importedTrades) => {
+  const importTrades = withAuthHandling(async (importedTrades) => {
     setActionError(null);
     try {
       const result = await api.importTrades(importedTrades);
@@ -527,10 +623,10 @@ export default function TradingJournal() {
       setActionError(err.message);
       throw err;
     }
-  };
+  });
 
   // Update a trade (most commonly: adding strategy tags, or a full edit) via the API.
-  const updateTrade = async (id, updates) => {
+  const updateTrade = withAuthHandling(async (id, updates) => {
     setActionError(null);
     try {
       const updated = await api.updateTrade(id, updates);
@@ -539,9 +635,9 @@ export default function TradingJournal() {
       setActionError(err.message);
       throw err;
     }
-  };
+  });
 
-  const deleteTrade = async (id) => {
+  const deleteTrade = withAuthHandling(async (id) => {
     setActionError(null);
     try {
       await api.deleteTrade(id);
@@ -550,7 +646,7 @@ export default function TradingJournal() {
       setActionError(err.message);
       throw err;
     }
-  };
+  });
 
   const enriched = useMemo(() => {
     let running = 0;
@@ -646,11 +742,22 @@ export default function TradingJournal() {
           )}
         </div>
         <div className="flex items-center gap-2">
-          <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 bg-transparent border border-[#2A2E38] text-[#A8B0BD] px-3 py-1.5 rounded-md text-[13px] font-sans font-medium hover:border-[#3A3F4A] hover:text-[#F2F4F7]">
-            <Upload size={14} /> Import
-          </button>
-          <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 bg-[#3DD68C] text-[#0A0E0C] px-3 py-1.5 rounded-md text-[13px] font-sans font-medium hover:bg-[#34C17D]">
-            <Plus size={14} /> Log trade
+          {isAuthed && (
+            <>
+              <button onClick={() => setShowImport(true)} className="flex items-center gap-1.5 bg-transparent border border-[#2A2E38] text-[#A8B0BD] px-3 py-1.5 rounded-md text-[13px] font-sans font-medium hover:border-[#3A3F4A] hover:text-[#F2F4F7]">
+                <Upload size={14} /> Import
+              </button>
+              <button onClick={() => setShowForm(true)} className="flex items-center gap-1.5 bg-[#3DD68C] text-[#0A0E0C] px-3 py-1.5 rounded-md text-[13px] font-sans font-medium hover:bg-[#34C17D]">
+                <Plus size={14} /> Log trade
+              </button>
+            </>
+          )}
+          <button
+            onClick={() => (isAuthed ? logout() : setShowLogin(true))}
+            title={isAuthed ? "Log out" : "Log in to edit"}
+            className="flex items-center gap-1.5 bg-transparent border border-[#2A2E38] text-[#6B7280] px-2.5 py-1.5 rounded-md text-[13px] font-sans hover:border-[#3A3F4A] hover:text-[#F2F4F7]"
+          >
+            {isAuthed ? <LogOut size={14} /> : <Lock size={14} />}
           </button>
         </div>
       </header>
@@ -753,26 +860,28 @@ export default function TradingJournal() {
                       </td>
                       <td className="px-4 py-3"><RRBar direction={t.direction} openPrice={t.openPrice} sl={t.sl} tp={t.tp} /></td>
                       <td className="px-4 py-3">
-                        <TagEditor trade={t} onSave={updateTrade} onTagClick={setActiveTagFilter} />
+                        <TagEditor trade={t} onSave={updateTrade} onTagClick={setActiveTagFilter} editable={isAuthed} />
                       </td>
                       <td className={`px-4 py-3 text-right font-mono font-medium ${t.pl >= 0 ? "text-[#3DD68C]" : "text-[#E5484D]"}`}>{fmtMoney(t.pl)}</td>
                       <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                          <button
-                            onClick={() => setEditingTrade(t)}
-                            className="p-1.5 rounded-md text-[#6B7280] hover:text-[#F2F4F7] hover:bg-[#2A2E38]"
-                            title="Edit trade"
-                          >
-                            <Pencil size={13} />
-                          </button>
-                          <button
-                            onClick={() => setDeletingTrade(t)}
-                            className="p-1.5 rounded-md text-[#6B7280] hover:text-[#E5484D] hover:bg-[#2A2E38]"
-                            title="Delete trade"
-                          >
-                            <Trash2 size={13} />
-                          </button>
-                        </div>
+                        {isAuthed && (
+                          <div className="flex items-center justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => setEditingTrade(t)}
+                              className="p-1.5 rounded-md text-[#6B7280] hover:text-[#F2F4F7] hover:bg-[#2A2E38]"
+                              title="Edit trade"
+                            >
+                              <Pencil size={13} />
+                            </button>
+                            <button
+                              onClick={() => setDeletingTrade(t)}
+                              className="p-1.5 rounded-md text-[#6B7280] hover:text-[#E5484D] hover:bg-[#2A2E38]"
+                              title="Delete trade"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -843,6 +952,13 @@ export default function TradingJournal() {
         <ImportModal
           onImport={importTrades}
           onClose={() => setShowImport(false)}
+        />
+      )}
+
+      {showLogin && (
+        <LoginModal
+          onLogin={login}
+          onClose={() => setShowLogin(false)}
         />
       )}
     </div>
