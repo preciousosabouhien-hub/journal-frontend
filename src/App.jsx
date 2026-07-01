@@ -735,7 +735,7 @@ export default function TradingJournal() {
       <header className="border-b border-[#2A2E38] px-5 py-4 flex items-center justify-between sticky top-0 bg-[#13151A]/95 backdrop-blur z-10">
         <div className="flex items-center gap-2">
           <div className="w-2 h-2 rounded-full bg-[#3DD68C]" />
-          <h1 className="font-sans font-semibold text-[15px]">Ledger</h1>
+          <h1 className="font-sans font-semibold text-[15px]">Midas Touch</h1>
           <span className="font-sans text-[11px] text-[#6B7280] hidden sm:inline">— personal trading journal</span>
           {actionError && (
             <span className="font-sans text-[11px] text-[#E5484D] hidden md:inline">· {actionError}</span>
