@@ -5,11 +5,6 @@ import { api, getToken, setToken, clearToken, AuthError } from "./api.js";
 
 const STRATEGY_TAGS = ["Breakout", "Pullback", "Reversal", "News", "Range", "Trend Follow"];
 
-function calcPips(symbol, openPrice, closePrice, direction) {
-  const multiplier = symbol === "USDJPY" ? 100 : symbol === "XAUUSD" ? 1 : 10000;
-  const diff = direction === "buy" ? closePrice - openPrice : openPrice - closePrice;
-  return diff * multiplier;
-}
 
 function calcRR(direction, openPrice, sl, tp) {
   const risk = Math.abs(openPrice - sl);
@@ -157,12 +152,13 @@ function TradeForm({ trade, onSave, onClose }) {
           sl: String(trade.sl ?? ""),
           tp: String(trade.tp ?? ""),
           lot: String(trade.lot ?? "0.1"),
+          pl: String(trade.pl ?? ""),
           tags: trade.tags ?? [],
           notes: trade.notes ?? "",
         }
       : {
           symbol: "EURUSD", direction: "buy", openTime: new Date().toISOString().slice(0, 10),
-          openPrice: "", closePrice: "", sl: "", tp: "", lot: "0.1", tags: [], notes: "",
+          openPrice: "", closePrice: "", sl: "", tp: "", lot: "0.1", pl: "", tags: [], notes: "",
         }
   );
   const [submitting, setSubmitting] = useState(false);
@@ -181,21 +177,12 @@ function TradeForm({ trade, onSave, onClose }) {
       setError("Open price, close price, stop loss, and take profit are all required.");
       return;
     }
+    if (form.pl === "" || isNaN(parseFloat(form.pl))) {
+      setError("P/L is required — enter the actual profit or loss from your broker (negative for a loss).");
+      return;
+    }
 
-    // When editing, only recompute P/L if a price-affecting field actually
-    // changed — otherwise we'd silently overwrite a P/L that may include
-    // swap/commission adjustments from a real MT5 import.
-    const priceFieldsChanged =
-      !isEditing ||
-      op !== trade.openPrice ||
-      cp !== trade.closePrice ||
-      parseFloat(form.lot) !== trade.lot ||
-      form.direction !== trade.direction ||
-      form.symbol !== trade.symbol;
-
-    const pl = priceFieldsChanged
-      ? Math.round(calcPips(form.symbol, op, cp, form.direction) * parseFloat(form.lot) * (form.symbol === "XAUUSD" ? 1 : 10))
-      : trade.pl;
+    const pl = parseFloat(form.pl);
 
     setSubmitting(true);
     setError(null);
@@ -272,6 +259,19 @@ function TradeForm({ trade, onSave, onClose }) {
               <label className={labelClass}>Lot size</label>
               <input type="number" step="0.01" className={inputClass} value={form.lot} onChange={(e) => setForm({ ...form, lot: e.target.value })} />
             </div>
+          </div>
+          <div>
+            <label className={labelClass}>
+              P/L <span className="normal-case text-[#6B7280]">(actual profit/loss from your broker)</span>
+            </label>
+            <input
+              type="number"
+              step="0.01"
+              className={inputClass}
+              value={form.pl}
+              onChange={(e) => setForm({ ...form, pl: e.target.value })}
+              placeholder="e.g. 42.50 or -18.00"
+            />
           </div>
           <div>
             <label className={labelClass}>Strategy tags</label>
