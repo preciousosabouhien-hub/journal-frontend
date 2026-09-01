@@ -3,7 +3,7 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { Plus, TrendingUp, TrendingDown, Target, X, Tag as TagIcon, Upload, Check, AlertCircle, Loader2, Pencil, Trash2, LogOut, Lock } from "lucide-react";
 import { api, getToken, setToken, clearToken, AuthError } from "./api.js";
 
-const STRATEGY_TAGS = ["Breakout", "Pullback", "Reversal", "News", "Range", "Trend Follow"];
+const STRATEGY_TAGS = ["Breakout", "Pullback", "Reversal", "News", "Range", "Trend Follow", "Demand and Supply", "Trendline"];
 
 
 function calcRR(direction, openPrice, sl, tp) {
