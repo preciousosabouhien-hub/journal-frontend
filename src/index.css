@@ -13,3 +13,18 @@ body {
 .font-sans {
   font-family: "Inter", system-ui, sans-serif;
 }
+
+.rss{
+ font-size:11px;
+}
+.tgs{
+  font-size:11px;
+}
+@media (max-width:768px) {
+  .rss{
+   display:none;
+  }
+  .tgs{
+    display:none;
+  }
+}

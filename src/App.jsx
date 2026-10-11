@@ -841,8 +841,8 @@ export default function TradingJournal() {
                     <th className="text-left px-4 py-2.5 font-medium rounded-tl-xl">Date</th>
                     <th className="text-left px-4 py-2.5 font-medium">Symbol</th>
                     <th className="text-left px-4 py-2.5 font-medium">Dir</th>
-                    <th className="text-left px-4 py-2.5 font-medium w-32">Risk : Reward</th>
-                    <th className="text-left px-4 py-2.5 font-medium">Tags</th>
+                    <th className="text-left px-4 py-2.5 font-medium w-32 rss">Risk : Reward</th>
+                    <th className="text-left px-4 py-2.5 font-medium tgs">Tags</th>
                     <th className="text-right px-4 py-2.5 font-medium">P/L</th>
                     <th className="text-right px-4 py-2.5 font-medium rounded-tr-xl w-20"></th>
                   </tr>
@@ -858,8 +858,8 @@ export default function TradingJournal() {
                           {t.direction}
                         </span>
                       </td>
-                      <td className="px-4 py-3"><RRBar direction={t.direction} openPrice={t.openPrice} sl={t.sl} tp={t.tp} /></td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-3 rss"><RRBar direction={t.direction} openPrice={t.openPrice} sl={t.sl} tp={t.tp} /></td>
+                      <td className="px-4 py-3 tgs">
                         <TagEditor trade={t} onSave={updateTrade} onTagClick={setActiveTagFilter} editable={isAuthed} />
                       </td>
                       <td className={`px-4 py-3 text-right font-mono font-medium ${t.pl >= 0 ? "text-[#3DD68C]" : "text-[#E5484D]"}`}>{fmtMoney(t.pl)}</td>
