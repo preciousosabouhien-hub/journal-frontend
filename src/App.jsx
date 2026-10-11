@@ -695,7 +695,7 @@ export default function TradingJournal() {
   if (!isLoaded) {
     return (
       <div className="min-h-screen bg-[#13151A] text-[#6B7280] flex items-center justify-center font-sans text-sm">
-        Loading your journal…
+        Loading Midas-Touch Trading journal…
       </div>
     );
   }
